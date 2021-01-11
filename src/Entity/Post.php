@@ -11,6 +11,7 @@
 
 namespace App\Entity;
 
+use App\Model\PostComment;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
@@ -222,5 +223,25 @@ class Post
     public function getTags(): Collection
     {
         return $this->tags;
+    }
+
+    public function toModel(): \App\Model\Post
+    {
+        $model = new \App\Model\Post();
+        $model->title = $this->title;
+        $model->authorName = $this->author->getFullName();
+        $model->publishedAt = $this->publishedAt;
+        $model->slug = $this->slug;
+        $model->summary = $this->summary;
+
+        foreach ($this->comments as $comment) {
+            $postComment = new PostComment();
+            $postComment->content = $comment->getContent();
+            $postComment->authorName = $comment->getAuthor()->getFullName();
+
+            $model->comments[] = $postComment;
+        }
+
+        return $model;
     }
 }

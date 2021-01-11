@@ -17,6 +17,9 @@ use App\Event\CommentCreatedEvent;
 use App\Form\CommentType;
 use App\Repository\PostRepository;
 use App\Repository\TagRepository;
+use Elastica\Query\MultiMatch;
+use JoliCode\Elastically\Client;
+use JoliCode\Elastically\Messenger\IndexationRequest;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Cache;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\IsGranted;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
@@ -24,6 +27,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
 
 /**
@@ -92,7 +96,7 @@ class BlogController extends AbstractController
      * (postSlug) doesn't match any of the Doctrine entity properties (slug).
      * See https://symfony.com/doc/current/bundles/SensioFrameworkExtraBundle/annotations/converters.html#doctrine-converter
      */
-    public function commentNew(Request $request, Post $post, EventDispatcherInterface $eventDispatcher): Response
+    public function commentNew(Request $request, Post $post, EventDispatcherInterface $eventDispatcher, MessageBusInterface $bus): Response
     {
         $comment = new Comment();
         $comment->setAuthor($this->getUser());
@@ -112,6 +116,9 @@ class BlogController extends AbstractController
             // there's no guarantee that the rest of this controller will be executed.
             // See https://symfony.com/doc/current/components/event_dispatcher.html
             $eventDispatcher->dispatch(new CommentCreatedEvent($comment));
+
+            // Could also use an event
+            $bus->dispatch(new IndexationRequest(\App\Model\Post::class, $post->getId()));
 
             return $this->redirectToRoute('blog_post', ['slug' => $post->getSlug()]);
         }
@@ -143,7 +150,7 @@ class BlogController extends AbstractController
     /**
      * @Route("/search", methods="GET", name="blog_search")
      */
-    public function search(Request $request, PostRepository $posts): Response
+    public function search(Request $request, Client $client): Response
     {
         $query = $request->query->get('q', '');
         $limit = $request->query->get('l', 10);
@@ -152,16 +159,29 @@ class BlogController extends AbstractController
             return $this->render('blog/search.html.twig', ['query' => $query]);
         }
 
-        $foundPosts = $posts->findBySearchQuery($query, $limit);
+        $searchQuery = new MultiMatch();
+        $searchQuery->setFields([
+            'title^5',
+            'title.autocomplete',
+            'comments.content',
+            'comments.authorName',
+        ]);
+        $searchQuery->setQuery($query);
+        $searchQuery->setType(MultiMatch::TYPE_MOST_FIELDS);
 
+        $foundPosts = $client->getIndex('post')->search($searchQuery);
         $results = [];
-        foreach ($foundPosts as $post) {
+
+        foreach ($foundPosts->getResults() as $result) {
+            /** @var \App\Model\Post $post */
+            $post = $result->getModel();
+
             $results[] = [
-                'title' => htmlspecialchars($post->getTitle(), ENT_COMPAT | ENT_HTML5),
-                'date' => $post->getPublishedAt()->format('M d, Y'),
-                'author' => htmlspecialchars($post->getAuthor()->getFullName(), ENT_COMPAT | ENT_HTML5),
-                'summary' => htmlspecialchars($post->getSummary(), ENT_COMPAT | ENT_HTML5),
-                'url' => $this->generateUrl('blog_post', ['slug' => $post->getSlug()]),
+                'title' => htmlspecialchars($post->title, ENT_COMPAT | ENT_HTML5),
+                'date' => $post->publishedAt->format('M d, Y'),
+                'author' => htmlspecialchars($post->authorName, ENT_COMPAT | ENT_HTML5),
+                'summary' => htmlspecialchars($post->summary, ENT_COMPAT | ENT_HTML5),
+                'url' => $this->generateUrl('blog_post', ['slug' => $post->slug]),
             ];
         }
 

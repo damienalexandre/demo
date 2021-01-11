@@ -1,0 +1,25 @@
+# Anything you want, no validation
+settings:
+    number_of_replicas: 0
+    number_of_shards: 1
+    refresh_interval: 60s
+mappings:
+    dynamic: false
+    properties:
+        title:
+            type: text
+            analyzer: english
+            fields:
+                autocomplete:
+                    type: text
+                    analyzer: app_autocomplete
+                    search_analyzer: standard
+        comments:
+            type: object
+            properties:
+                content:
+                    type: text
+                    analyzer: english
+                authorName:
+                    type: text
+                    analyzer: english

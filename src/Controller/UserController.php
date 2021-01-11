@@ -13,10 +13,15 @@ namespace App\Controller;
 
 use App\Form\Type\ChangePasswordType;
 use App\Form\UserType;
+use App\Model\Post;
+use App\Repository\PostRepository;
+use JoliCode\Elastically\Messenger\IndexationRequest;
+use JoliCode\Elastically\Messenger\MultipleIndexationRequest;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\IsGranted;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Core\Encoder\UserPasswordEncoderInterface;
 
@@ -33,7 +38,7 @@ class UserController extends AbstractController
     /**
      * @Route("/edit", methods="GET|POST", name="user_edit")
      */
-    public function edit(Request $request): Response
+    public function edit(Request $request, PostRepository $postRepository, MessageBusInterface $bus): Response
     {
         $user = $this->getUser();
 
@@ -42,6 +47,15 @@ class UserController extends AbstractController
 
         if ($form->isSubmitted() && $form->isValid()) {
             $this->getDoctrine()->getManager()->flush();
+
+            // Reindex ALL posts from this user post or comment
+            // Move this to an event
+            $postIds = $postRepository->findPostIds($user);
+            $operations = [];
+            foreach ($postIds as $postId) {
+                $operations[] = new IndexationRequest(Post::class, $postId);
+            }
+            $bus->dispatch(new MultipleIndexationRequest($operations));
 
             $this->addFlash('success', 'user.updated_successfully');
 

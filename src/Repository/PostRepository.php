@@ -13,6 +13,7 @@ namespace App\Repository;
 
 use App\Entity\Post;
 use App\Entity\Tag;
+use App\Entity\User;
 use App\Pagination\Paginator;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -52,6 +53,22 @@ class PostRepository extends ServiceEntityRepository
         }
 
         return (new Paginator($qb))->paginate($page);
+    }
+
+    public function findPostIds(User $user): array
+    {
+        $qb = $this->createQueryBuilder('p')
+            ->select('p.id')
+            ->distinct()
+            ->leftJoin('p.comments', 'c')
+            ->where('p.author = :user')
+            ->orWhere('c.author = :user')
+            ->setParameter('user', $user)
+        ;
+
+        $result = $qb->getQuery()->getScalarResult();
+
+        return array_column($result, 'id');
     }
 
     /**

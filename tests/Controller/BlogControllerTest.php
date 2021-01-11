@@ -91,8 +91,14 @@ class BlogControllerTest extends WebTestCase
         $results = json_decode($client->getResponse()->getContent(), true);
 
         $this->assertResponseHeaderSame('Content-Type', 'application/json');
-        $this->assertCount(1, $results);
         $this->assertSame('Lorem ipsum dolor sit amet consectetur adipiscing elit', $results[0]['title']);
         $this->assertSame('Jane Doe', $results[0]['author']);
+
+        $client->xmlHttpRequest('GET', '/en/blog/search', ['q' => 'Nulla porta lobortis']);
+
+        $results = json_decode($client->getResponse()->getContent(), true);
+
+        $this->assertResponseHeaderSame('Content-Type', 'application/json');
+        $this->assertSame('Nulla porta lobortis ligula vel egestas', $results[0]['title']);
     }
 }
